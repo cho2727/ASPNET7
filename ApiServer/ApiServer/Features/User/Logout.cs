@@ -1,4 +1,5 @@
-﻿using ApiServer.Helper;
+﻿using ApiServer.Features.Shared;
+using ApiServer.Helper;
 using ApiServer.Shared.Interfaces;
 using Infrastructure;
 using MediatR;
@@ -13,30 +14,17 @@ public class Logout
         public string AccessToken { get; set; } = string.Empty;
     }
 
-    public class Response
+    public class Response : BaseResponse
     {
-        public bool Result { get; set; }
-        public Error? Error { get; set; }
     }
 
-    public class Error
+    public class CommandHandler : AbstractBaseHandler, IRequestHandler<Command, Response>
     {
-        public string Code { get; set; } = string.Empty;
-        public string Message { get; set; } = string.Empty;
-    }
-
-    public class CommandHandler : IRequestHandler<Command, Response>
-    {
-        private readonly ITokenGenerator _tokenGenerator;
-        private readonly ApiServerContext _context;
-        private readonly IConfiguration _configuration;
-
-        public CommandHandler(ITokenGenerator tokenGenerator, ApiServerContext context, IConfiguration configuration)
+        public CommandHandler(ApiServerContext context, IConfiguration configuration, IApiLogger logger)
+            : base(context, configuration, logger)
         {
-            _tokenGenerator = tokenGenerator;
-            _context = context;
-            _configuration = configuration;
         }
+
         public async Task<Response> Handle(Command request, CancellationToken cancellationToken)
         {
             var response = new Response { Result = false };

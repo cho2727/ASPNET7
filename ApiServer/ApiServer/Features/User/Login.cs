@@ -1,4 +1,5 @@
-﻿using ApiServer.Shared.Interfaces;
+﻿using ApiServer.Features.Shared;
+using ApiServer.Shared.Interfaces;
 using ApiServer.Shared.Models;
 using Infrastructure;
 using Infrastructure.Migrations;
@@ -14,32 +15,22 @@ public class Login
         public string Password { get; set; } = string.Empty;
     }
 
-    public class Response
+    public class Response : BaseResponse
     {
-        public bool Result { get; set; }
-        public Error? Error { get; set; }
         public string? AccessToken { get; set; }
         public string? RefreshToken { get; set; }
     }
 
-    public class Error
-    {
-        public string Code { get; set; } = string.Empty;
-        public string Message { get; set; } = string.Empty;
-    }
 
-    public class CommandHandler : IRequestHandler<Command, Response>
+    public class CommandHandler : AbstractBaseHandler, IRequestHandler<Command, Response>
     {
         private readonly ITokenGenerator _tokenGenerator;
-        private readonly ApiServerContext _context;
-        private readonly IConfiguration _configuration;
 
-        public CommandHandler(ITokenGenerator tokenGenerator, ApiServerContext context, IConfiguration configuration)
+        public CommandHandler(ITokenGenerator tokenGenerator, ApiServerContext context, IConfiguration configuration, IApiLogger logger) : base(context, configuration, logger)
         {
             _tokenGenerator = tokenGenerator;
-            _context = context;
-            _configuration = configuration;
         }
+
         public async Task<Response> Handle(Command request, CancellationToken cancellationToken)
         {
             var response = new Response { Result = false };

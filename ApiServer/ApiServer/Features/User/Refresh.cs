@@ -1,10 +1,8 @@
-﻿using ApiServer.Helper;
+﻿using ApiServer.Features.Shared;
 using ApiServer.Shared.Interfaces;
 using ApiServer.Shared.Models;
 using Infrastructure;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -20,105 +18,81 @@ public class Refresh
         public string? RefreshToken { get; set; } = string.Empty;
     }
 
-    public class Response
+    public class Response : BaseResponse
     {
         public string? AccessToken { get; set; }
         public string? RefreshToken { get; set; }
-        public bool Result { get; set; }
-        public Error? Error { get; set; }
     }
 
-    public class Error
-    {
-        public string Code { get; set; } = string.Empty;
-        public string Message { get; set; } = string.Empty;
-    }
-
-    public class CommandHandler : IRequestHandler<Command, Response>
+    public class CommandHandler : AbstractBaseHandler, IRequestHandler<Command, Response>
     {
         private readonly ITokenGenerator _tokenGenerator;
-        private readonly ApiServerContext _context;
-        private readonly IConfiguration _configuration;
 
-        public CommandHandler(ITokenGenerator tokenGenerator, ApiServerContext context, IConfiguration configuration)
-        {
-            _tokenGenerator = tokenGenerator;
-            _context = context;
-            _configuration = configuration;
-        }
+        public CommandHandler(ITokenGenerator tokenGenerator, ApiServerContext context, IConfiguration configuration, IApiLogger logger)
+            : base(context, configuration, logger) => _tokenGenerator = tokenGenerator;
+
         public async Task<Response> Handle(Command request, CancellationToken cancellationToken)
         {
+            var response = new Response { Result = false };
             var tokenPayload = _configuration.GetSection("TokenManagement").Get<TokenManagement>();
-            var handler = new JwtSecurityTokenHandler();
-            TokenValidationParameters validationParameters = new TokenValidationParameters
-            {
-                ValidAudience = tokenPayload.Audience,
-                ValidIssuer = tokenPayload.Issuer,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(tokenPayload.Secret)),
-                ValidateLifetime = false
-            };
+            if (tokenPayload == null) throw new NullReferenceException(nameof(tokenPayload));
 
-            var principal = handler.ValidateToken(request.AccessToken, validationParameters, out var jwtToken);
+            ClaimsPrincipal principal = ValidateToken(request.AccessToken,
+                                                      tokenPayload.Audience,
+                                                      tokenPayload.Issuer,
+                                                      tokenPayload.Secret);
+            var login = GetLoginInfo(request.AccessToken, request.RefreshToken, principal);
+            // expiring
+            login.UseFlag = false;
+            var (AccessToken, RefreshToken) = ReCreateToken(login.User.Id);
+            var refreshExpirationMinute = tokenPayload?.RefreshExpiration ?? 1440;
+            AddLogin(login.User.Id, AccessToken, RefreshToken, refreshExpirationMinute);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            response.Result = true;
+            response.AccessToken = AccessToken;
+            response.RefreshToken = RefreshToken;
+            return response;
+        }
+
+        private Infrastructure.Models.Login GetLoginInfo
+            (string accessToken, string refreshToken, ClaimsPrincipal principal)
+        {
             var identity = (principal.Identity as ClaimsIdentity);
             var nameClaim = identity?.
                             Claims.
                             SingleOrDefault(c => c.Type == "Name");
-
-            Infrastructure.Models.Login? findLogin = FindLoginAndCheckValidToken(request, nameClaim);
-            Expiring(findLogin);
-            (var accessToken, var refreshToken) = Recreate(nameClaim?.Value);
-
-            Add(nameClaim?.Value, accessToken, refreshToken);
-            await _context.SaveChangesAsync();
-
-
-            var response = new Response { Result = false };
-            response.Result = true;
-            response.AccessToken = accessToken;
-            response.RefreshToken = refreshToken;
-
-            return response;
-        }
-
-        private Infrastructure.Models.Login? FindLoginAndCheckValidToken(Command request, Claim? nameClaim)
-        {
-            var findLogin = Find(request.AccessToken, request.RefreshToken);
-            if (findLogin == null) throw new Exception("Invalid refreshToken");
-            if (!findLogin.User.Id.Equals(nameClaim?.Value, StringComparison.OrdinalIgnoreCase)) 
+            var login = GetLogin(l => l.AccessToken == accessToken
+                                && l.RefreshToken == refreshToken
+                                && l.RefreshTokenExpired > DateTime.UtcNow);
+            if (login == null) throw new Exception("Invalid refreshToken");
+            if (!login.User.Id.Equals(nameClaim?.Value, StringComparison.OrdinalIgnoreCase))
                 throw new Exception("Invalid refreshToken");
-            return findLogin;
+
+            return login;
         }
 
-        private (string AccessToken, string RefreshToken) Recreate(string id) => (_tokenGenerator.Create(id), _tokenGenerator.CreateRefreshToken());
-
-        private void Expiring(Infrastructure.Models.Login login) => login.UseFlag = false;
-
-        private Infrastructure.Models.Login? Find(string accessToken, string refreshToken)
+        private static ClaimsPrincipal ValidateToken
+            (string accessToken, string audience, string issuer, string secretKey)
         {
-            return _context.Logins?
-            .Where(l => l.AccessToken == accessToken
-                    && l.RefreshToken == refreshToken
-                    && l.RefreshTokenExpired > DateTime.UtcNow)
-            .Include(l => l.User)
-            .SingleOrDefault();
-        }
-
-        private void Add(string id, string? accessToken, string? refreshToken)
-        {
-            var expirationMinute = _configuration.GetSection("TokenManagement").Get<TokenManagement>()?.RefreshExpiration ?? 1440;
-
-            var refreshTokenExpired = DateTime.UtcNow.AddMinutes(expirationMinute);
-
-            var findUser = _context.Users.Where(u => u.Id == id).SingleOrDefault();
-            var login = new Infrastructure.Models.Login
+            var handler = new JwtSecurityTokenHandler();
+            var validationParameters = new TokenValidationParameters
             {
-                User = findUser,
-                UseFlag = true,
-                AccessToken = accessToken ?? string.Empty,
-                RefreshToken = refreshToken ?? string.Empty,
-                RefreshTokenExpired = refreshTokenExpired
+                ValidAudience = audience,
+                ValidIssuer = issuer,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(secretKey)),
+                ValidateLifetime = false
             };
-            _context.Logins.Add(login);
+            return handler.ValidateToken(accessToken, validationParameters, out _);
         }
+
+        private (string AccessToken, string RefreshToken) ReCreateToken(string id)
+        {
+            // expiring
+            var newAccessToken = _tokenGenerator.Create(id);
+            var newRefreshToken = _tokenGenerator.CreateRefreshToken();
+            return (newAccessToken, newRefreshToken);
+        }
+
     }
 }
