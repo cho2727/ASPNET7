@@ -11,6 +11,7 @@ using System.Text;
 using Infrastructure.Extensions;
 using ApiServer.Shared.Authorization;
 using Microsoft.AspNetCore.Authorization;
+using System.Text.Json;
 
 var configurationBuilder = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json", false, true)
@@ -62,6 +63,15 @@ try
             });
         c.CustomSchemaIds(x => x.FullName?.Replace("+", "."));
     });
+
+    //builder.Services.ConfigureHttpJsonOptions(options => 
+    //{
+    //    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    //    options.SerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+    //    options.SerializerOptions.PropertyNameCaseInsensitive = true;
+    //    options.SerializerOptions.WriteIndented = true;
+    //});
+
     builder.Services.Configure<SwaggerGeneratorOptions>(opts =>
     {
         opts.InferSecuritySchemes = true;
