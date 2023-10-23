@@ -2,7 +2,6 @@
 using ApiServer.Shared.Interfaces;
 using ApiServer.Shared.Models;
 using Infrastructure;
-using Infrastructure.Migrations;
 using MediatR;
 
 namespace ApiServer.Features.User;

@@ -36,7 +36,8 @@ namespace Infrastructure.Migrations
                     RefreshTokenExpired = table.Column<DateTime>(type: "datetime2", nullable: true),
                     LoginTime = table.Column<DateTime>(type: "datetime2", nullable: false),
                     UseFlag = table.Column<bool>(type: "bit", nullable: false),
-                    UserId = table.Column<string>(type: "nvarchar(20)", nullable: false)
+                    UserId = table.Column<string>(type: "nvarchar(20)", nullable: false),
+                    LastLoginTime = table.Column<DateTime>(type: "datetime2", nullable: false)
                 },
                 constraints: table =>
                 {

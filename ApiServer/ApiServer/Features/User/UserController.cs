@@ -36,6 +36,11 @@ public class UserController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> AuthHello() => await Task.FromResult(Ok("Hello"));
 
+    [HttpGet("authentication")]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Authentication() => await Task.FromResult(Ok("Hello"));
+
     [AllowAnonymous]
     [HttpPost("register")]
     [ProducesResponseType(typeof(Register.Response), StatusCodes.Status200OK)]
